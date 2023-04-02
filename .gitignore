@@ -1,2 +1,4 @@
 *.db
 araknnid
+.DS_Store
+.Trash-1000
