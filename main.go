@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -15,11 +16,12 @@ var (
 	semverInfo = "v0.1.0"
 
 	// the cache tracks which links you've seen
-	maxCacheEntries = 100000
+	maxCacheEntries = 10000
 
 	// this is the random slice of db links you
 	// pull when you don't specify a --url on launch
-	maxRandomLinks = 1000
+	maxRandomLinks = 100
+	fetchFrequency = 10 * maxRandomLinks
 
 	// sensible user agent is sensible
 	// give people an avenue to contact in case they want their
@@ -41,6 +43,9 @@ func main() {
 	// link depth
 	depthFlag := flag.Int("depth", 1, "Maximum depth for the crawler")
 	flag.Parse()
+
+	// number of workers
+	workersFlag := flag.Int("workers", 1, "Number of concurrent workers")
 
 	// make a connection to the db
 	db, err := sqlx.Connect("sqlite3", "spider.db")
@@ -67,28 +72,32 @@ func main() {
 	// if there was no url specified, grab some
 	// random urls from the db and start there.
 	if *urlFlag == "" {
-		rows, err := db.Query("SELECT url FROM links")
-		if err != nil {
-			log.Fatal(brightred + "Failed to query links from database" + nc)
-		}
-
 		urls := []string{}
-		for rows.Next() {
-			var url string
-			rows.Scan(&url)
-			urls = append(urls, url)
-		}
 
-		// shuffle them sometimes so we're not
-		// stuck on the same huge site forever
-		shuffle(urls)
-
-		// for each url we scoop up, scrub it
-		for i, url := range urls {
-			if i >= maxRandomLinks {
-				break
+		for {
+			// Fetch random URLs
+			rows, err := db.Query("SELECT url FROM links ORDER BY RANDOM() LIMIT " + strconv.Itoa(maxRandomLinks))
+			if err != nil {
+				log.Fatal(brightred + "Failed to query links from database" + nc)
 			}
-			processURL(url, ignoreList, cache, db, *depthFlag)
+
+			// Clear previous URLs and add new random URLs
+			urls = urls[:0]
+			for rows.Next() {
+				var url string
+				rows.Scan(&url)
+				urls = append(urls, url)
+			}
+
+			// Process fetched URLs
+			for i, url := range urls {
+				processURL(url, ignoreList, cache, db, *depthFlag)
+
+				// Fetch new random rows after processing fetchFrequency URLs
+				if (i+1)%fetchFrequency == 0 {
+					break
+				}
+			}
 		}
 	} else {
 		processURL(*urlFlag, ignoreList, cache, db, *depthFlag)

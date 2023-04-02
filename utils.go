@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -95,14 +94,6 @@ func processURL(url string, ignoreList []string, cache *LRUCache, db *sqlx.DB, d
 	newLinks := extractLinks(content, url, depth)
 	for _, newLink := range newLinks {
 		processURL(newLink, ignoreList, cache, db, depth-1)
-	}
-}
-
-// shuffle a list
-func shuffle(urls []string) {
-	for i := len(urls) - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
-		urls[i], urls[j] = urls[j], urls[i]
 	}
 }
 
