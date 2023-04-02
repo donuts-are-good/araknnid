@@ -33,9 +33,6 @@ var (
 // lets get it started
 func main() {
 
-	// print a status message on an interval
-	go printStats(30 * time.Second)
-
 	// check for flags
 	// urlFlag is a starting off point
 	// that you can define
@@ -43,10 +40,11 @@ func main() {
 
 	// link depth
 	depthFlag := flag.Int("depth", 1, "Maximum depth for the crawler")
-	flag.Parse()
 
 	// number of workers
 	workersFlag := flag.Int("workers", 1, "Number of concurrent workers")
+
+	flag.Parse()
 
 	// make a connection to the db
 	db, err := sqlx.Connect("sqlite3", "spider.db")
@@ -66,6 +64,9 @@ func main() {
 
 	// prepare the cache for the scanned links
 	cache := NewLRUCache(maxCacheEntries)
+
+	// print a status message on an interval
+	go printStats(10*time.Second, *workersFlag, cache)
 
 	// check the db for duplicate links
 	deduplicateLinks(db)
@@ -104,6 +105,6 @@ func main() {
 			wg.Wait()
 		}
 	} else {
-		processURL(*urlFlag, ignoreList, cache, db, *depthFlag)
+		processURL(0, *urlFlag, ignoreList, cache, db, *depthFlag)
 	}
 }

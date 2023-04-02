@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 // then. its probably a wasteful use
 // of mutexes but who's going to see
 // this anyway.
-func printStats(interval time.Duration) {
+func printStats(interval time.Duration, workerCount int, cache *LRUCache) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -29,9 +30,11 @@ func printStats(interval time.Duration) {
  \__,_|_|  \__,_|_|\_\_| |_|_| |_|_|\__,_|
  https://github.com/donuts-are-good/araknnid
  araknnid ` + semverInfo)
-		fmt.Printf(brightcyan+"\nProcessed URLs: %d\n"+nc, stats.processedURLs)
-		fmt.Printf(brightcyan+"Max LRU Cache Len: %d\n\n"+nc, maxCacheEntries)
-		fmt.Printf(brightcyan+"Errors: %d\n\n"+nc, stats.errors)
+		fmt.Printf(brightcyan+"\nProcessed URLs:\t%d\t"+nc, stats.processedURLs)
+		fmt.Printf(brightcyan+"Max LRU Cache:\t%d\n"+nc, maxCacheEntries)
+		fmt.Printf(brightcyan+"Cache Size:\t%d\t"+nc, len(cache.items))
+		fmt.Printf(brightcyan+"Worker Count:\t%d\n"+nc, workerCount)
+		fmt.Printf(brightcyan+"Error Count:\t%d\t\n\n"+nc, stats.errors)
 
 		time.Sleep(2 * time.Second)
 		statsMutex.Unlock()
@@ -42,7 +45,7 @@ func printStats(interval time.Duration) {
 // makes sure that the link in hand
 // does't pattern match anything in
 // ignore.txt
-func processURL(url string, ignoreList []string, cache *LRUCache, db *sqlx.DB, depth int) {
+func processURL(workerID int, url string, ignoreList []string, cache *LRUCache, db *sqlx.DB, depth int) {
 
 	// check if the url matches a pattern
 	// on the ignore list
@@ -80,7 +83,7 @@ func processURL(url string, ignoreList []string, cache *LRUCache, db *sqlx.DB, d
 	link := Link{URL: url, Data: data}
 
 	// announce it
-	println(brightcyan + "ok: " + nc + link.URL)
+	println(brightcyan + "[" + strconv.Itoa(workerID+1) + "] " + nc + link.URL)
 
 	// filter out the small entries
 	if len(link.Data) > 100 {
@@ -93,7 +96,7 @@ func processURL(url string, ignoreList []string, cache *LRUCache, db *sqlx.DB, d
 	// get the links from the link
 	newLinks := extractLinks(content, url, depth)
 	for _, newLink := range newLinks {
-		processURL(newLink, ignoreList, cache, db, depth-1)
+		processURL(workerID, newLink, ignoreList, cache, db, depth-1)
 	}
 }
 
