@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -71,9 +72,8 @@ func main() {
 
 	// if there was no url specified, grab some
 	// random urls from the db and start there.
-	if *urlFlag == "" {
-		urls := []string{}
 
+	if *urlFlag == "" {
 		for {
 			// Fetch random URLs
 			rows, err := db.Query("SELECT url FROM links ORDER BY RANDOM() LIMIT " + strconv.Itoa(maxRandomLinks))
@@ -82,22 +82,26 @@ func main() {
 			}
 
 			// Clear previous URLs and add new random URLs
-			urls = urls[:0]
+			urls := make(chan string, maxRandomLinks)
+			counter := 0
 			for rows.Next() {
 				var url string
 				rows.Scan(&url)
-				urls = append(urls, url)
-			}
-
-			// Process fetched URLs
-			for i, url := range urls {
-				processURL(url, ignoreList, cache, db, *depthFlag)
-
-				// Fetch new random rows after processing fetchFrequency URLs
-				if (i+1)%fetchFrequency == 0 {
+				urls <- url
+				counter++
+				if counter%fetchFrequency == 0 {
 					break
 				}
 			}
+			close(urls)
+
+			// Create workers
+			var wg sync.WaitGroup
+			wg.Add(*workersFlag)
+			for i := 0; i < *workersFlag; i++ {
+				go worker(i, urls, &wg, ignoreList, cache, db, *depthFlag)
+			}
+			wg.Wait()
 		}
 	} else {
 		processURL(*urlFlag, ignoreList, cache, db, *depthFlag)
